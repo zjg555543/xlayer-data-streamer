@@ -38,9 +38,9 @@ type CommandError uint32
 const EntryTypeNotFound = math.MaxUint32
 
 const (
-	maxConnections    = 100 // Maximum number of connected clients
-	streamBuffer      = 256 // Buffers for the stream channel
-	maxBookmarkLength = 16  // Maximum number of bytes for a bookmark
+	maxConnections    = 1024 // Maximum number of connected clients
+	streamBuffer      = 256  // Buffers for the stream channel
+	maxBookmarkLength = 16   // Maximum number of bytes for a bookmark
 )
 
 const (
