@@ -285,7 +285,7 @@ func (s *StreamServer) waitConnections() {
 
 		// Check max connections allowed
 		if s.getSafeClientsLen() >= maxConnections {
-			log.Warnf("Unable to accept client connection, maximum number of connections reached (%d) ip %s", maxConnections, conn.RemoteAddr().String())
+			log.Warnf("Unable to accept client connection, maximum number of connections reached (%d) remote ip %s, local ip %s", maxConnections, conn.RemoteAddr().String(), conn.LocalAddr().String())
 			conn.Close()
 			time.Sleep(timeout)
 			continue
