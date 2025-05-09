@@ -3,7 +3,10 @@ package log
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+
 	"strings"
+	"time"
 
 	"github.com/0xPolygonHermez/zkevm-data-streamer"
 	"github.com/hermeznetwork/tracerr"
@@ -19,6 +22,8 @@ const (
 	EnvironmentProduction = LogEnvironment("production")
 	// EnvironmentDevelopment development log environment.
 	EnvironmentDevelopment = LogEnvironment("development")
+
+	traceLogPath = "/home/dsrelay/logs/trace.log"
 )
 
 // Logger is a wrapper providing logging facilities.
@@ -320,4 +325,65 @@ func Errorw(msg string, kv ...interface{}) {
 func Fatalw(msg string, kv ...interface{}) {
 	msg = appendStackTraceMaybeKV(msg, kv)
 	getDefaultLog().Fatalw(msg, kv...)
+}
+
+// Internal logging function with hardcoded format string
+func writeTraceLogInternal(v ...interface{}) {
+	// Format string defining 22 fields
+	format := "%s,%s,%s,%s,%s,%s,%d,%d,%s,%d,%d,%d,%s,%s,%d,%s,%s,%s,%s,%s,%s,%s"
+
+	dir := filepath.Dir(traceLogPath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if mkdirErr := os.MkdirAll(dir, 0755); mkdirErr != nil {
+			log.Errorf("Error: Failed to create directory %s for trace log: %v\n", dir, mkdirErr)
+			return
+		}
+	}
+
+	f, err := os.OpenFile(traceLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Errorf("Error: Failed to open trace log file %s: %v\n", traceLogPath, err)
+		return
+	}
+	defer f.Close()
+
+	message := fmt.Sprintf(format, v...)
+
+	if len(message) == 0 || message[len(message)-1] != '\n' {
+		message += "\n"
+	}
+
+	if _, err := f.WriteString(message); err != nil {
+		log.Errorf("Error: Failed to write to trace log file %s: %v\n", traceLogPath, err)
+	}
+}
+
+// Public logging function with standardized parameters
+func LogTrace() {
+	allArgs := []interface{}{
+		"xlayer",                  // chain
+		"",                        // txhash
+		"",                        // status
+		"okx-defi-xlayer-ds",      // serviceName
+		"xlayer",                  // business
+		"",                        // client
+		196,                       // chainId
+		15050,                     // process
+		"xlayer_ds_receive_block", // processWord
+		-1,                        // index
+		-1,                        // innerIndex
+		time.Now().UnixNano() / int64(time.Millisecond), // currentTime
+		"", // referId
+		"", // contractAddress
+		0,  // blockHeight
+		"", // blockHash
+		"", // blockTime
+		"", // depositConfirmHeight
+		"", // tokenID
+		"", // mevSupplier
+		"", // businessHash
+		"", // transactionType)
+	}
+
+	writeTraceLogInternal(allArgs...)
 }

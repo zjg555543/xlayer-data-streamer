@@ -418,6 +418,10 @@ func (s *StreamServer) addStream(desc string, etype EntryType, data []byte) (uin
 	// Log data entry fields
 	log.Debugf("%s entry: %d | %d | %d | %d | %d", desc, e.Number, e.packetType, e.Length, e.Type, len(data))
 
+	if e.Type == 2 { // EntryTypeL2Block
+		log.LogTrace()
+	}
+
 	// Update header (in memory) and write data entry into the file
 	err := s.streamFile.AddFileEntry(e)
 	if err != nil {
