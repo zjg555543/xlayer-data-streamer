@@ -22,8 +22,6 @@ const (
 	EnvironmentProduction = LogEnvironment("production")
 	// EnvironmentDevelopment development log environment.
 	EnvironmentDevelopment = LogEnvironment("development")
-
-	traceLogPath = "/home/dsrelay/logs/trace.log"
 )
 
 // Logger is a wrapper providing logging facilities.
@@ -31,8 +29,14 @@ type Logger struct {
 	x *zap.SugaredLogger
 }
 
-// root logger
-var log *Logger
+var (
+	// root logger
+	log *Logger
+
+	// For X Layer
+	TraceLogPath    string
+	TraceLogEnabled bool
+)
 
 func getDefaultLog() *Logger {
 	if log != nil {
@@ -329,10 +333,9 @@ func Fatalw(msg string, kv ...interface{}) {
 
 // Internal logging function with hardcoded format string
 func writeTraceLogInternal(v ...interface{}) {
-	// Format string defining 22 fields
-	format := "%s,%s,%s,%s,%s,%s,%d,%d,%s,%d,%d,%d,%s,%s,%d,%s,%s,%s,%s,%s,%s,%s"
+	format := "%s,%s,%s,%s,%s,%s,%d,%d,%s,%s,%s,%d,%s,%s,%d,%s,%d,%s,%s,%s,%s,%d"
 
-	dir := filepath.Dir(traceLogPath)
+	dir := filepath.Dir(TraceLogPath)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		if mkdirErr := os.MkdirAll(dir, 0755); mkdirErr != nil {
 			log.Errorf("Error: Failed to create directory %s for trace log: %v\n", dir, mkdirErr)
@@ -340,9 +343,9 @@ func writeTraceLogInternal(v ...interface{}) {
 		}
 	}
 
-	f, err := os.OpenFile(traceLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(TraceLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Errorf("Error: Failed to open trace log file %s: %v\n", traceLogPath, err)
+		log.Errorf("Error: Failed to open trace log file %s: %v\n", TraceLogPath, err)
 		return
 	}
 	defer f.Close()
@@ -354,35 +357,40 @@ func writeTraceLogInternal(v ...interface{}) {
 	}
 
 	if _, err := f.WriteString(message); err != nil {
-		log.Errorf("Error: Failed to write to trace log file %s: %v\n", traceLogPath, err)
+		log.Errorf("Error: Failed to write to trace log file %s: %v\n", TraceLogPath, err)
 	}
 }
 
 // Public logging function with standardized parameters
-func LogTrace() {
+func LogTrace(
+	blockHeight uint64,
+	blockHash string,
+	blockTime uint64,
+) {
+
 	allArgs := []interface{}{
-		"xlayer",                  // chain
-		"",                        // txhash
-		"",                        // status
-		"okx-defi-xlayer-ds",      // serviceName
-		"xlayer",                  // business
-		"",                        // client
-		196,                       // chainId
-		15050,                     // process
-		"xlayer_ds_receive_block", // processWord
-		-1,                        // index
-		-1,                        // innerIndex
-		time.Now().UnixNano() / int64(time.Millisecond), // currentTime
-		"", // referId
-		"", // contractAddress
-		0,  // blockHeight
-		"", // blockHash
-		"", // blockTime
-		"", // depositConfirmHeight
-		"", // tokenID
-		"", // mevSupplier
-		"", // businessHash
-		"", // transactionType)
+		Chain,
+		Txhash,
+		Status,
+		ServiceName,
+		Business,
+		Client,
+		ChainID,
+		StepDsReceiveBlockID,
+		StepDsReceiveBlockWord,
+		Index,
+		InnerIndex,
+		time.Now().UnixMilli(),
+		ReferId,
+		ContractAddress,
+		blockHeight,
+		blockHash,
+		blockTime,
+		DepositConfirmHeight,
+		TokenID,
+		MevSupplier,
+		BusinessHash,
+		TransactionType,
 	}
 
 	writeTraceLogInternal(allArgs...)

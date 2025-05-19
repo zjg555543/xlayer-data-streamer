@@ -10,6 +10,7 @@ RUN go mod download
 # BUILD BINARY
 COPY relay /src/relay
 COPY datastreamer /src/datastreamer
+COPY datastream /src/datastream
 COPY log /src/log
 COPY Makefile version.go config/environments/testnet/config.toml /src/
 RUN make build-dsrelay

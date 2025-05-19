@@ -31,7 +31,10 @@ type config struct {
 	InactivityTimeout time.Duration
 	Log               string
 
-	DeleteData bool // For X Layer
+	// For X Layer
+	DeleteData      bool
+	TraceLogEnabled bool
+	TraceLogPath    string
 }
 
 func main() {
@@ -99,7 +102,10 @@ func defaultConfig() (*config, error) {
 		InactivityTimeout: 120 * time.Second, //nolint:mnd
 		Log:               "info",
 
-		DeleteData: false, // For X Layer
+		// For X Layer
+		DeleteData:      false,
+		TraceLogEnabled: true,
+		TraceLogPath:    "/home/dsrelay/logs/trace.log",
 	}, nil
 }
 
@@ -149,6 +155,9 @@ func loadConfig(ctx *cli.Context) (*config, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	log.TraceLogEnabled = cfg.TraceLogEnabled
+	log.TraceLogPath = cfg.TraceLogPath
 
 	return cfg, nil
 }

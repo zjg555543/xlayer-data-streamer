@@ -13,7 +13,9 @@ import (
 	"sync"
 	"time"
 
+	pb "github.com/0xPolygonHermez/zkevm-data-streamer/datastream"
 	"github.com/0xPolygonHermez/zkevm-data-streamer/log"
+	"google.golang.org/protobuf/proto"
 )
 
 // Command type for the TCP client commands
@@ -418,8 +420,20 @@ func (s *StreamServer) addStream(desc string, etype EntryType, data []byte) (uin
 	// Log data entry fields
 	log.Debugf("%s entry: %d | %d | %d | %d | %d", desc, e.Number, e.packetType, e.Length, e.Type, len(data))
 
-	if e.Type == 2 { // EntryTypeL2Block
-		log.LogTrace()
+	if e.Type == 2 && log.TraceLogEnabled {
+		l2Block := &pb.L2Block{}
+		if err := proto.Unmarshal(e.Data, l2Block); err != nil {
+			log.Errorf("Failed to unmarshal L2Block protobuf data for FileEntry number %d: %v", e.Number, err)
+		} else {
+			blockHeight := l2Block.GetNumber()
+			blockHashBytes := l2Block.GetHash()
+			blockHashHex := fmt.Sprintf("0x%x", blockHashBytes)
+			blockTimestamp := l2Block.GetTimestamp()
+
+			log.Debugf("Successfully unmarshaled L2Block: Height=%d, Hash=%s, Timestamp=%d (FileEntry Num: %d)",
+				blockHeight, blockHashHex, blockTimestamp, e.Number)
+			log.LogTrace(blockHeight, blockHashHex, blockTimestamp)
+		}
 	}
 
 	// Update header (in memory) and write data entry into the file
