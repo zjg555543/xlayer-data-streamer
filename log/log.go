@@ -34,8 +34,8 @@ var (
 	log *Logger
 
 	// For X Layer
-	TraceLogPath    string
-	TraceLogEnabled bool
+	TraceLogPath   string
+	EnableTraceLog bool
 )
 
 func getDefaultLog() *Logger {

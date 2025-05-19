@@ -420,7 +420,7 @@ func (s *StreamServer) addStream(desc string, etype EntryType, data []byte) (uin
 	// Log data entry fields
 	log.Debugf("%s entry: %d | %d | %d | %d | %d", desc, e.Number, e.packetType, e.Length, e.Type, len(data))
 
-	if e.Type == 2 && log.TraceLogEnabled {
+	if e.Type == 2 && log.EnableTraceLog {
 		l2Block := &pb.L2Block{}
 		if err := proto.Unmarshal(e.Data, l2Block); err != nil {
 			log.Errorf("Failed to unmarshal L2Block protobuf data for FileEntry number %d: %v", e.Number, err)

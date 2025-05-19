@@ -32,9 +32,9 @@ type config struct {
 	Log               string
 
 	// For X Layer
-	DeleteData      bool
-	TraceLogEnabled bool
-	TraceLogPath    string
+	DeleteData     bool
+	EnableTraceLog bool
+	TraceLogPath   string
 }
 
 func main() {
@@ -103,9 +103,9 @@ func defaultConfig() (*config, error) {
 		Log:               "info",
 
 		// For X Layer
-		DeleteData:      false,
-		TraceLogEnabled: true,
-		TraceLogPath:    "/home/dsrelay/logs/trace.log",
+		DeleteData:     false,
+		EnableTraceLog: true,
+		TraceLogPath:   "/home/dsrelay/logs/trace.log",
 	}, nil
 }
 
@@ -156,7 +156,7 @@ func loadConfig(ctx *cli.Context) (*config, error) {
 		return nil, err
 	}
 
-	log.TraceLogEnabled = cfg.TraceLogEnabled
+	log.EnableTraceLog = cfg.EnableTraceLog
 	log.TraceLogPath = cfg.TraceLogPath
 
 	return cfg, nil
