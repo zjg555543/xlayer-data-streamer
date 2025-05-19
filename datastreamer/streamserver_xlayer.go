@@ -54,47 +54,20 @@ func (s *StreamServer) processCmdRangeBookmark(client *client) error {
 		return err
 	}
 
-	to, err := s.bookmark.GetBookmark(eb)
-	if err != nil || to == 0 || to >= s.nextEntry {
+	toStart, err := s.bookmark.GetBookmark(eb)
+	if err != nil || toStart == 0 || toStart >= s.nextEntry {
 		log.Errorf("RangeBookmark command invalid end bookmark %v for client %s: %v", eb, client.clientID, err)
 		err = ErrEndBookmarkInvalidParamToBookmark
 		_ = s.sendResultEntry(uint32(CmdErrBadToBookmark), StrCommandErrors[CmdErrBadToBookmark], client)
 		return err
 	}
 
-	// Find L2BlockEnd or BatchEnd entry number
-	iterator, err := s.streamFile.iteratorFrom(to, true)
+	to, err := s.findToEntryNumber(toStart)
 	if err != nil {
 		log.Errorf("RangeBookmark command invalid to iterator %v for client %s: %v", eb, client.clientID, err)
 		err = ErrEndBookmarkInvalidParamToBookmark
 		_ = s.sendResultEntry(uint32(CmdErrBadToBookmark), StrCommandErrors[CmdErrBadToBookmark], client)
 		return err
-	}
-	reachedBlockEnd := false
-	for {
-		// Get next entry data
-		end, err := s.streamFile.iteratorNext(iterator)
-		if err != nil {
-			log.Warnf("RangeBookmark command invalid next iterator %v for client %s: %v", eb, client.clientID, err)
-			err = ErrEndBookmarkInvalidParamToBookmark
-			_ = s.sendResultEntry(uint32(CmdErrBadToBookmark), StrCommandErrors[CmdErrBadToBookmark], client)
-			return err
-		}
-
-		// Check if end of iterator or reached end of the range
-		if end || (reachedBlockEnd && iterator.Entry.Type != EtBatchEnd) {
-			break
-		}
-
-		if iterator.Entry.Type == EtL2BlockEnd {
-			// Reached the end of a block. Continue iteration to check for batch end
-			reachedBlockEnd = true
-			to = iterator.Entry.Number
-		} else if iterator.Entry.Type == EtBatchEnd {
-			// Reached the end of a batch
-			to = iterator.Entry.Number
-			break
-		}
 	}
 
 	// Send a command result entry OK
@@ -103,12 +76,59 @@ func (s *StreamServer) processCmdRangeBookmark(client *client) error {
 		return err
 	}
 
-	// Send toEntry
+	// Send the end entry number
 	be := make([]byte, 8)
 	binary.BigEndian.PutUint64(be, to)
 	TimeoutWrite(client, be, s.writeTimeout)
 
 	return s.streamingRangeEntry(client, from, to)
+}
+
+func (s *StreamServer) findToEntryNumber(toStart uint64) (uint64, error) {
+	// Find L2BlockEnd or BatchEnd entry number
+	iterator, err := s.streamFile.iteratorFrom(toStart, true)
+	if err != nil {
+		return 0, err
+	}
+
+	to := uint64(0)
+	reachedBlockEnd := false
+	for {
+		// Get next entry data
+		end, err := s.streamFile.iteratorNext(iterator)
+		if err != nil {
+			return 0, err
+		}
+
+		// Check end of iterator
+		if end {
+			if !reachedBlockEnd {
+				return 0, fmt.Errorf("findToEntryNumber: Reached end of iterator without finding L2BlockEnd")
+			}
+			return to, nil
+		}
+		// Check end of range
+		if reachedBlockEnd && iterator.Entry.Type != EtBatchEnd {
+			return to, nil
+		}
+
+		if iterator.Entry.Type == EtL2BlockEnd {
+			// Reached the end of a block. Continue iteration to check for batch end
+			reachedBlockEnd = true
+			to = iterator.Entry.Number
+		}
+
+		if iterator.Entry.Type == EtBatchEnd {
+			if reachedBlockEnd {
+				// Reached the end of a batch
+				to = iterator.Entry.Number
+				return to, nil
+			} else {
+				// Reached the end of a batch but not the end of a block
+				return 0, fmt.Errorf("findToEntryNumber: Reached BatchEnd without finding L2BlockEnd")
+			}
+		}
+	}
 }
 
 // streamingRangeEntry streams the range of file entries from entry number until to entry number
