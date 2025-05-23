@@ -2,6 +2,7 @@ package datastreamer
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -974,6 +975,9 @@ func (s *StreamServer) processCmdHeader(client *client) error {
 	// Get current written/committed file header
 	header := s.streamFile.getHeaderEntry()
 	binaryHeader := encodeHeaderEntryToBinary(header)
+
+	log.Infof("XXX clientID: %d, getHeaderEntry: %+v,", client.clientID, header)
+	log.Infof("XXX binaryHeader: %s", hex.EncodeToString(binaryHeader))
 
 	// Send header entry to the client
 	if client.conn != nil {
