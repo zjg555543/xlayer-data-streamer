@@ -894,6 +894,7 @@ func (s *StreamServer) processCmdStart(client *client) error {
 	if err != nil {
 		return err
 	}
+	log.Infof("XXX send start ok done, clientID: %s", client.clientID)
 
 	// Stream entries data from the requested entry number
 	if fromEntry < s.nextEntry {
@@ -941,6 +942,7 @@ func (s *StreamServer) processCmdStartBookmark(client *client) error {
 	if err != nil {
 		return err
 	}
+	log.Infof("XXX send startbookmark ok done, clientID: %s", client.clientID)
 
 	// Stream entries data from the entry number marked by the bookmark
 	log.Debugf("Client %s Bookmark [%v] is the entry number [%d]", client.clientID, bookmark, entryNum)
@@ -958,7 +960,11 @@ func (s *StreamServer) processCmdStop(client *client) error {
 
 	// Send a command result entry OK
 	err := s.sendResultEntry(0, "OK", client)
-	return err
+	if err != nil {
+		return err
+	}
+	log.Infof("XXX send stop ok done, clientID: %s", client.clientID)
+	return nil
 }
 
 // processCmdHeader processes the TCP Header command from the clients
@@ -971,12 +977,13 @@ func (s *StreamServer) processCmdHeader(client *client) error {
 	if err != nil {
 		return err
 	}
+	log.Infof("XXX send header ok done, clientID: %s", client.clientID)
 
 	// Get current written/committed file header
 	header := s.streamFile.getHeaderEntry()
 	binaryHeader := encodeHeaderEntryToBinary(header)
 
-	log.Infof("XXX clientID: %d, getHeaderEntry: %+v,", client.clientID, header)
+	log.Infof("XXX clientID: %s, getHeaderEntry: %+v,", client.clientID, header)
 	log.Infof("XXX binaryHeader: %s", hex.EncodeToString(binaryHeader))
 
 	// Send header entry to the client
@@ -1008,6 +1015,7 @@ func (s *StreamServer) processCmdEntry(client *client) error {
 	if err != nil {
 		return err
 	}
+	log.Infof("XXX send entry ok done, clientID: %s", client.clientID)
 
 	// Get the requested entry
 	entry, err := s.GetEntry(entryNumber)
@@ -1063,6 +1071,7 @@ func (s *StreamServer) processCmdBookmark(client *client) error {
 	if err != nil {
 		return err
 	}
+	log.Infof("XXX send bookmark ok done, clientID: %s", client.clientID)
 
 	// Get the requested bookmark
 	entry, err := s.GetFirstEventAfterBookmark(bookmark)
