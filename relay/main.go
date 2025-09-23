@@ -30,6 +30,8 @@ type config struct {
 	WriteTimeout      time.Duration
 	InactivityTimeout time.Duration
 	Log               string
+
+	DeleteData bool // For X Layer
 }
 
 func main() {
@@ -96,6 +98,8 @@ func defaultConfig() (*config, error) {
 		WriteTimeout:      3 * time.Second,   //nolint:mnd
 		InactivityTimeout: 120 * time.Second, //nolint:mnd
 		Log:               "info",
+
+		DeleteData: false, // For X Layer
 	}, nil
 }
 
@@ -195,7 +199,15 @@ func run(ctx *cli.Context) error {
 		Outputs:     []string{"stdout"},
 	})
 
-	log.Infof(">> Relay server started: port[%d] file[%s] server[%s] log[%s]", cfg.Port, cfg.File, cfg.Server, cfg.Log)
+	log.Infof(">> Relay server started: port[%d] file[%s] server[%s] log[%s] delete data[%v]",
+		cfg.Port, cfg.File, cfg.Server, cfg.Log, cfg.DeleteData)
+
+	if cfg.DeleteData {
+		log.Infof(">> Warning Deleting data file: %s", cfg.File)
+		deleteDataFile(cfg.File)
+		log.Infof(">> Data file deleted: %s succeeded!", cfg.File)
+		time.Sleep(1 * time.Second) //nolint:gomnd
+	}
 
 	// Create relay server
 	r, err := datastreamer.NewRelay(cfg.Server, uint16(cfg.Port), streamerVersion, streamerSystemID,
@@ -219,4 +231,26 @@ func run(ctx *cli.Context) error {
 
 	log.Info(">> Relay server finished")
 	return nil
+}
+
+func deleteDataFile(fileName string) {
+	ind := strings.IndexRune(fileName, '.')
+	if ind == -1 {
+		fileName = fileName + ".bin"
+	}
+
+	err := os.Remove(fileName)
+	if err != nil {
+		log.Error("Error deleting file:", err)
+	} else {
+		log.Infof("File deleted: %s", fileName)
+	}
+
+	name := fileName[0:strings.IndexRune(fileName, '.')] + ".db"
+	err = os.RemoveAll(name)
+	if err != nil {
+		log.Errorf("Error deleting folder:", err)
+	} else {
+		log.Infof("Folder deleted: %s", name)
+	}
 }
