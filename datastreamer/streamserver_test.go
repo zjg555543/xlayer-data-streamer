@@ -34,6 +34,10 @@ func TestProcessCommand(t *testing.T) {
 	err = server.processCommand(CmdBookmark, cli)
 	assert.EqualError(t, ErrBookmarkCommandNotAllowed, err.Error())
 
+	// Test CmdLatestL2Block
+	err = server.processCommand(CmdLatestL2Block, cli)
+	assert.EqualError(t, ErrLatestL2BlockCommandNotAllowed, err.Error())
+
 	// Test invalid command
 	err = server.processCommand(Command(100), cli)
 	assert.EqualError(t, ErrInvalidCommand, err.Error())
