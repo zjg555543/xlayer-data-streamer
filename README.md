@@ -1,6 +1,6 @@
 # zkEVM DataStreamer
 
-Go implementation of a generic fast data streamer library. 
+Go implementation of a generic fast data streamer library.  
 
 **Use case for the zkEVM Node**: Sequencer data stream service to stream L2 blocks and L2 txs.
 
