@@ -37,6 +37,11 @@ type CommandError uint32
 // EntryTypeNotFound is the entry type value for CmdEntry/CmdBookmark when entry/bookmark not found
 const EntryTypeNotFound = math.MaxUint32
 
+// Entry type constants for data stream entries (internal definitions)
+const (
+	internalEntryTypeL2Block EntryType = 2 // L2Block entry type
+)
+
 const (
 	maxConnections    = 100 // Maximum number of connected clients
 	streamBuffer      = 256 // Buffers for the stream channel
@@ -44,12 +49,15 @@ const (
 )
 
 const (
+	// Standard commands
 	CmdStart         Command = iota + 1 // CmdStart for the start from entry TCP client command
 	CmdStop                             // CmdStop for the stop TCP client command
 	CmdHeader                           // CmdHeader for the header TCP client command
 	CmdStartBookmark                    // CmdStartBookmark for the start from bookmark TCP client command
 	CmdEntry                            // CmdEntry for the get entry TCP client command
 	CmdBookmark                         // CmdBookmark for the get bookmark TCP client command
+
+	CmdLatestL2Block Command = 1001 // CmdLatestL2Block is the optimized get latest L2Block command
 )
 
 const (
@@ -94,6 +102,7 @@ var (
 		CmdStartBookmark: "StartBookmark",
 		CmdEntry:         "Entry",
 		CmdBookmark:      "Bookmark",
+		CmdLatestL2Block: "LatestL2Block",
 	}
 
 	// StrCommandErrors for TCP command errors description
@@ -132,6 +141,10 @@ type StreamServer struct {
 	stream     chan streamAO // Channel to stream committed atomic operations
 	streamFile *StreamFile
 	bookmark   *StreamBookmark
+
+	// L2Block caching for performance optimization
+	latestL2BlockEntry FileEntry    // Cache of the latest L2Block entry
+	latestL2BlockMutex sync.RWMutex // Mutex for thread-safe access to latestL2BlockEntry
 }
 
 // streamAO type to manage atomic operations
@@ -219,7 +232,64 @@ func NewServer(port uint16, version uint8, systemID uint64, streamType StreamTyp
 		return &s, err
 	}
 
+	// Initialize L2Block cache by loading the latest L2Block from database on startup
+	err = s.initializeL2BlockCache()
+	if err != nil {
+		log.Warnf("Failed to initialize L2Block cache: %v", err)
+		// Don't return error, just log warning as this is an optimization
+	}
+
 	return &s, nil
+}
+
+// initializeL2BlockCache loads the latest L2Block from database on server startup
+func (s *StreamServer) initializeL2BlockCache() error {
+	header := s.streamFile.getHeaderEntry()
+
+	if header.TotalEntries == 0 {
+		log.Infof("No entries in datastream, L2Block cache will be empty until first L2Block is added")
+		return nil
+	}
+
+	// Search backwards from the latest entry to find the most recent L2Block
+	// This only happens once during server startup
+	maxSearchEntries := uint64(100000) // Allow more entries during startup initialization (increased for better coverage)
+
+	startEntry := int64(header.TotalEntries - 1)
+	searchedEntries := uint64(0)
+
+	log.Infof("Initializing L2Block cache: searching from entry %d (total entries: %d)", startEntry, header.TotalEntries)
+
+	for entryNum := startEntry; entryNum >= 0 && searchedEntries < maxSearchEntries; entryNum-- {
+		searchedEntries++
+
+		entry, err := s.GetEntry(uint64(entryNum))
+		if err != nil {
+			// Log only every 1000 entries to avoid spam during startup
+			if searchedEntries%1000 == 0 {
+				log.Infof("L2Block cache init: searched %d entries, current: %d", searchedEntries, entryNum)
+			}
+			continue
+		}
+
+		// Check if this entry is an L2Block
+		if entry.Type == internalEntryTypeL2Block {
+			s.latestL2BlockMutex.Lock()
+			s.latestL2BlockEntry = entry
+			s.latestL2BlockMutex.Unlock()
+
+			log.Infof("L2Block cache initialized with entry %d (searched %d entries)", entryNum, searchedEntries)
+			return nil
+		}
+
+		// Progress logging every 1000 entries
+		if searchedEntries%1000 == 0 {
+			log.Infof("L2Block cache init: searched %d entries, current: %d", searchedEntries, entryNum)
+		}
+	}
+
+	log.Errorf("L2Block cache initialization: no L2Block found in recent %d entries", searchedEntries)
+	return fmt.Errorf("no L2Block entry found in recent %d entries during initialization", searchedEntries)
 }
 
 // Start opens access to TCP clients and starts broadcasting
@@ -382,6 +452,23 @@ func (s *StreamServer) AddStreamEntry(etype EntryType, data []byte) (uint64, err
 
 	// Add to the stream file
 	entryNum, err := s.addStream("Data", etype, data)
+	if err != nil {
+		return entryNum, err
+	}
+
+	// Cache L2Block entries for performance optimization
+	if etype == internalEntryTypeL2Block {
+		s.latestL2BlockMutex.Lock()
+		s.latestL2BlockEntry = FileEntry{
+			packetType: PtData,
+			Length:     1 + 4 + 4 + 8 + uint32(len(data)),
+			Type:       etype,
+			Number:     entryNum,
+			Data:       data,
+		}
+		s.latestL2BlockMutex.Unlock()
+		log.Infof("Cached latest L2Block entry: %d", entryNum)
+	}
 
 	return entryNum, err
 }
@@ -797,6 +884,9 @@ func (s *StreamServer) processCommand(command Command, client *client) error {
 	case CmdBookmark:
 		err = s.handleBookmarkCommand(cli)
 
+	case CmdLatestL2Block:
+		err = s.handleLatestL2BlockCommand(cli)
+
 	default:
 		log.Error("Invalid command!")
 		err = ErrInvalidCommand
@@ -883,6 +973,17 @@ func (s *StreamServer) handleBookmarkCommand(cli *client) error {
 	}
 
 	return s.processCmdBookmark(cli)
+}
+
+// handleLatestL2BlockCommand processes the CmdLatestL2Block command
+func (s *StreamServer) handleLatestL2BlockCommand(cli *client) error {
+	if cli.status != csStopped {
+		log.Error("LatestL2Block command not allowed, stream started!")
+		_ = s.sendResultEntry(uint32(CmdErrAlreadyStarted), StrCommandErrors[CmdErrAlreadyStarted], cli)
+		return ErrLatestL2BlockCommandNotAllowed
+	}
+
+	return s.processCmdLatestL2Block(cli)
 }
 
 // processCmdStart processes the TCP Start command from the clients
@@ -1102,6 +1203,65 @@ func (s *StreamServer) processCmdBookmark(client *client) error {
 	return nil
 }
 
+// processCmdLatestL2Block processes the TCP LatestL2Block command from the clients
+func (s *StreamServer) processCmdLatestL2Block(client *client) error {
+	// Log
+	log.Debugf("Client %s command LatestL2Block", client.clientID)
+
+	// Send a command result entry OK
+	err := s.sendResultEntry(0, "OK", client)
+	if err != nil {
+		return err
+	}
+
+	// Get the latest L2Block entry by searching backwards
+	entry, err := s.getLatestL2BlockEntry()
+	if err != nil {
+		log.Warnf("Latest L2Block entry not found: %v", err)
+		entry = FileEntry{}
+		entry.Length = FixedSizeFileEntry
+		entry.Type = EntryTypeNotFound
+	}
+	entry.packetType = PtDataRsp
+	binaryEntry := encodeFileEntryToBinary(entry)
+
+	// Send entry to the client
+	if client.conn != nil {
+		_, err = TimeoutWrite(client, binaryEntry, s.writeTimeout)
+	} else {
+		err = ErrNilConnection
+	}
+	if err != nil {
+		log.Errorf("Error sending latest L2Block entry to %s: %v", client.clientID, err)
+		return err
+	}
+
+	return nil
+}
+
+// getLatestL2BlockEntry returns the most recent L2Block entry using cached data for optimal performance
+// This function now only uses the cache and does not perform any file searches
+func (s *StreamServer) getLatestL2BlockEntry() (FileEntry, error) {
+	// PERFORMANCE OPTIMIZATION: Use cached L2Block entry only
+	s.latestL2BlockMutex.RLock()
+	cachedEntry := s.latestL2BlockEntry
+	s.latestL2BlockMutex.RUnlock()
+
+	// If we have a cached L2Block entry, return it immediately
+	// Note: cachedEntry.Number can be 0 for the first L2Block, so we check Type and Length instead
+	if cachedEntry.Type == internalEntryTypeL2Block && cachedEntry.Length > 0 {
+		log.Infof("Returning cached L2Block entry: %d (ZERO I/O)", cachedEntry.Number)
+		return cachedEntry, nil
+	}
+
+	// No cached entry available - this should only happen if:
+	// 1. No L2Block entries exist in the datastream yet
+	// 2. Server startup initialization failed to find any L2Block
+	emptyEntry := FileEntry{}
+	log.Errorf("No cached L2Block entry available - no L2Block entries exist yet")
+	return emptyEntry, fmt.Errorf("no L2Block entries available in cache")
+}
+
 // streamingFromEntry sends to the client the stream data starting from the requested entry number
 func (s *StreamServer) streamingFromEntry(client *client, fromEntry uint64) error {
 	// Log
@@ -1290,7 +1450,15 @@ func PrintResultEntry(e ResultEntry) {
 
 // IsACommand checks if a command is a valid command
 func (c Command) IsACommand() bool {
-	return c >= CmdStart && c <= CmdBookmark
+	// Check standard commands (1-6)
+	if c >= CmdStart && c <= CmdBookmark {
+		return true
+	}
+	// Check custom X Layer commands (1000+)
+	if c == CmdLatestL2Block {
+		return true
+	}
+	return false
 }
 
 // TimeoutWrite sets a deadline time before write

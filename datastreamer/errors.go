@@ -93,4 +93,6 @@ var (
 	ErrBookmarkMaxLength = fmt.Errorf("bookmark max length")
 	// ErrInvalidBookmarkRange is returned when the bookmark range is invalid
 	ErrInvalidBookmarkRange = fmt.Errorf("invalid bookmark range")
+	// ErrLatestL2BlockCommandNotAllowed is returned when the latest L2Block command is not allowed
+	ErrLatestL2BlockCommandNotAllowed = fmt.Errorf("latest L2Block command not allowed")
 )

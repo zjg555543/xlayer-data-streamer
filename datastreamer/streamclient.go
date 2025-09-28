@@ -179,6 +179,12 @@ func (c *StreamClient) ExecCommandGetBookmark(fromBookmark []byte) (FileEntry, e
 	return entry, err
 }
 
+// ExecCommandGetLatestL2Block executes client TCP command to get the latest L2Block entry
+func (c *StreamClient) ExecCommandGetLatestL2Block() (FileEntry, error) {
+	_, entry, err := c.execCommand(CmdLatestL2Block, false, 0, nil)
+	return entry, err
+}
+
 // execCommand executes a valid client TCP command with deferred command result possibility
 func (c *StreamClient) execCommand(cmd Command, deferredResult bool,
 	fromEntry uint64, fromBookmark []byte) (HeaderEntry, FileEntry, error) {
@@ -282,6 +288,12 @@ func (c *StreamClient) execCommand(cmd Command, deferredResult bool,
 		e := c.getEntry()
 		if e.Type == EntryTypeNotFound {
 			return header, entry, ErrBookmarkNotFound
+		}
+		entry = e
+	case CmdLatestL2Block:
+		e := c.getEntry()
+		if e.Type == EntryTypeNotFound {
+			return header, entry, ErrEntryNotFound
 		}
 		entry = e
 	}
